@@ -1,0 +1,98 @@
+require("dotenv").config();
+
+const axios = require("axios");
+const storage = require("node-persist");
+
+const md5Encrypt = require("crypto-js/md5");
+
+storage.init();
+
+/********* Utility methods ****************/
+
+const CLIENT_TYPE = "WINPC_V2";
+const HOST = process.env.HOST_DSS_URL;
+
+const md5 = (val) => {
+  return md5Encrypt(val).toString();
+};
+
+async function setItem(key, data) {
+  await storage.setItem(key, data);
+}
+/********* Utility methods END ************/
+
+async function firstLogin() {
+  try {
+    await axios.post(HOST + "/brms/api/v1.0/accounts/authorize", {
+      userName: "system",
+      ipAddress: "192.168.81.233",
+      clientType: CLIENT_TYPE,
+    });
+  } catch (error) {
+    return error?.response?.data;
+  }
+}
+
+async function secondLogin(data) {
+  try {
+    const response = await axios.post(
+      HOST + "/brms/api/v1.0/accounts/authorize",
+      data
+    );
+    return response?.data;
+  } catch (error) {
+    console.log(error);
+
+    return error;
+  }
+}
+
+async function login() {
+  const username = "system";
+  const password = "CCTV@Fwh65";
+
+  try {
+    const firsetLoginResult = await firstLogin();
+
+    const { realm, encryptType, publickey, randomKey } = firsetLoginResult;
+
+    const $$signature = md5(
+      username + ":" + realm + ":" + md5(md5(username + md5(password)))
+    );
+    const signature = md5($$signature + ":" + randomKey);
+
+    setItem("firstRejectPublicKey", publickey);
+    setItem("$$signature", $$signature);
+
+    const dataSecondLogin = await secondLogin({
+      mac: "00:15:5D:02:26:02",
+      signature,
+      userName: username,
+      randomKey,
+      publicKey: publickey,
+      encryptType,
+      ipAddress: "192.168.81.233",
+      clientType: CLIENT_TYPE,
+      userType: 0,
+    });
+
+    const { code, desc, data, token, secretKey, secretVector } =
+      dataSecondLogin;
+
+    if (code && code !== 1000) {
+      // If code is not equal to 1000
+      return await Promise.reject({ code, data, desc });
+    } else if (token) {
+      setItem("token", token); // token
+      setItem("secretKey", secretKey); // secretKey
+      setItem("secretVector", secretVector); // secretVector
+    }
+  } catch ({ code, data, desc }) {
+    // Other kinds of exception handling
+    return await Promise.reject({ code, data, desc });
+  }
+}
+
+module.exports = {
+  login,
+};
