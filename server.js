@@ -15,25 +15,25 @@ const md5 = (val) => {
   return md5Encrypt(val).toString();
 };
 
-const authorize = (data) => {
-  return axios.post({
-    url: "http://192.168.81.233/brms/api/v1.0/accounts/authorize",
-    data,
-  });
+const authorize = async (data) => {
+  return axios.post(
+    "http://10.160.200.200/brms/api/v1.0/accounts/authorize",
+    data
+  );
 };
 
-const keepalive = (data) => {
-  return axios.put({
-    url: "http://192.168.81.233/brms/api/v1.0/accounts/keepalive",
-    data,
-  });
+const keepalive = async (data) => {
+  return axios.put(
+    "http://10.160.200.200/brms/api/v1.0/accounts/keepalive",
+    data
+  );
 };
 
-const updateToken = (data) => {
-  return axios.post({
-    url: "http://192.168.81.233/brms/api/v1.0/accounts/updateToken",
-    data,
-  });
+const updateToken = async (data) => {
+  return axios.post(
+    "http://10.160.200.200/brms/api/v1.0/accounts/updateToken",
+    data
+  );
 };
 
 /**
@@ -62,7 +62,7 @@ async function firstLogin(username) {
   try {
     await authorize({
       userName: username,
-      ipAddress: "192.168.81.233",
+      ipAddress: "10.160.200.200",
       clientType: CLIENT_TYPE,
     });
   } catch ({ realm, encryptType, publickey, randomKey }) {
@@ -79,44 +79,38 @@ async function firstLogin(username) {
  * When some error occurs, a Rejected promise is thrown to the outer layer
  * @memberof Session
  */
-async function login(username, password) {
+async function login() {
   const username = "system";
   const password = "CCTV@Fwh65";
+
   try {
-    /*********************************************
-     * do first login *
-     *********************************************/
-    const firsetLoginResult = await firstLogin(username);
+    const firsetLoginResult = await firstLogin();
+
     const { realm, encryptType, publickey, randomKey } = firsetLoginResult;
-    /*********************************************
-     * md5 encrypt *
-     *********************************************/
+
     const $$signature = md5(
       username + ":" + realm + ":" + md5(md5(username + md5(password)))
     );
     const signature = md5($$signature + ":" + randomKey);
-    // Cache publickey
+
     setItem("firstRejectPublicKey", publickey);
     setItem("$$signature", $$signature);
-    /*********************************************
-     * do second login *
-     *********************************************/
-    const { code, desc, data, token, secretKey, secretVector } =
-      await authorize({
-        mac: "00:15:5D:02:26:02",
-        signature,
-        userName: username,
-        randomKey,
-        publicKey: PUBLIC_KEY,
-        encryptType,
-        ipAddress: "192.168.81.233",
-        clientType: CLIENT_TYPE,
-        userType: 0,
-      });
 
-    /*********************************************
-     * handle result *
-     *********************************************/
+    const dataSecondLogin = await secondLogin({
+      mac: "00:15:5D:02:26:02",
+      signature,
+      userName: username,
+      randomKey,
+      publicKey: publickey,
+      encryptType,
+      ipAddress: "192.168.81.233",
+      clientType: CLIENT_TYPE,
+      userType: 0,
+    });
+
+    const { code, desc, data, token, secretKey, secretVector } =
+      dataSecondLogin;
+
     if (code && code !== 1000) {
       // If code is not equal to 1000
       return await Promise.reject({ code, data, desc });
@@ -153,8 +147,8 @@ async function doUpdateToken() {
 }
 
 /********* Call login function ************/
-const username = "admin";
-const password = "admin1234567";
+const username = "system";
+const password = "CCTV@Fwh65";
 login(username, password);
 /********* Call login function ************/
 
@@ -174,12 +168,24 @@ setInterval(async () => {
 /***************** Utility methods ****************/
 
 const getMqConfigIP = async (transport) => {
+  console.log('http://10.160.200.200/brms/api/v1.1/config/mq/' + transport);
   const response = await axios.get(
-    `http://192.168.81.233/brms/api/v1.1/config/mq/${transport}`
+    `http://10.160.200.200/brms/api/v1.1/config/mq/${transport}`
   );
+  console.log(response.data)
   return response.data;
 };
 
+/**
+* getItem
+* The function to get data from cache
+* @param {*} key 
+*/
+function getItem(key) {
+  return localStorage.getItem(key);
+}
+// const value =  localStorage.getItem("key");
+// console.log(value);
 /**
  * aesDecrypt
  * AES decrypt
@@ -210,58 +216,61 @@ let mq;
  * getMqConfig
  * Get Mq config
  */
-async function getMqConfig() {
-  const {
-    addr,
-    username,
-    password: encryptedPassword,
-  } = await getMqConfigIP(protocol);
+async function getMqConf() {
+  try {
+    const {
+      addr,
+      username,
+      password: encryptedPassword,
+    } = await getMqConfigIP(protocol);
 
-  // Replace with your logic to retrieve secretKey and secretVector from cache
-  const secretKey = "yourSecretKey";
-  const secretVector = "yourSecretVector";
+    console.log("ADDR  => ", addr)
+    // const secretKey = "yourSecretKey";
+    // const secretVector = "yourSecretVector";
 
-  // Decrypt mq password
-  const password = aesDecrypt(encryptedPassword, secretKey, secretVector);
+    const decryptedPassword = aesDecrypt(encryptedPassword, secretKey, secretVector);
 
-  // Set mq config info
-  config.addr = addr;
-  config.username = username;
-  config.password = password;
-  config.protocol = protocol;
+    config.addr = addr;
+    config.username = username;
+    config.password = decryptedPassword;
+    config.protocol = protocol;
+  } catch (error) {
+    console.error("Error getting MQ config:", error);
+  }
 }
+
+
 
 /**
  * connectMq
  * Connect mq and subscribe to topic
  */
 async function connectMq() {
-  await getMqConfig();
-  const { protocol, addr, username, password } = config;
-  const [host, port] = addr.split(":");
-  const uri = `${protocol}://${host}:${port}`;
-  const clientId = "xxxxxx-xxxxxxy-0xxxxxx";
+  try {
+    await getMqConf();
+    const { protocol, addr, username, password } = config;
+    const [host, port] = addr.split(":");
+    const uri = `${protocol}://${host}:${port}`;
+    const clientId = "xxxxxx-xxxxxxy-0xxxxxx";
 
-  /*********************************************
-   * Connect and get mq instance *
-   *********************************************/
-  mq = mqtt.connect(uri, { username, password, clientId });
+    mq = mqtt.connect(uri, { username, password, clientId });
 
-  /*********************************************
-   * Subscribe and Receive *
-   *********************************************/
-  const topicName = "mq.alarm.msg.topic.1";
+    const topicName = "mq.alarm.msg.topic.1";
 
-  // Subscribe
-  mq.subscribe(topicName, function (err) {
-    if (!err) console.log("Subscribed successfully!");
-  });
+    mq.on("connect", () => {
+      mq.subscribe(topicName, function (err) {
+        if (!err) console.log("Subscribed successfully!");
+      });
+    });
 
-  // Receive messages
-  mq.on("message", (topic, message) => {
-    console.log(topic, message.toString());
-  });
+    mq.on("message", (topic, message) => {
+      console.log("log =>> ", topic, message.toString());
+    });
+  } catch (error) {
+    console.error("Error connecting to MQTT broker:", error);
+  }
 }
+
 
 // Connect to MQTT broker and subscribe
 connectMq()
@@ -276,10 +285,10 @@ connectMq()
  * !! MAIN PART END !! *
  ********************************************************/
 
-const express = require("express");
-const app = express();
+// const express = require("express");
+// const app = express();
 
-const port = 4952;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+// const port = 4952;
+// app.listen(port, () => {
+//   console.log(`Server running on port ${port}`);
+// });
