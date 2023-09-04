@@ -1,0 +1,7 @@
+{
+    "code": "0",
+    "status": "Error",
+    "id": "0",
+    "table": "stock_request",
+    "Message": "Item Count:0, Item Sync:1, Content:[{\"sku\":\"3000740\",\"name\":\"SILK-MERSILK 6/0 CUTTING 10 MM เข็มคู่ W815\",\"qty\":72,\"unittext\":\"PC\",\"pricepernumber\":220.42,\"discount\":\"\",\"discountamount\":\"\",\"totalprice\":15870.24,\"qty_package\":72,\"qty_balance\":0,\"remark\":\"\"}]"
+}

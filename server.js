@@ -5,11 +5,16 @@ const hex = require("crypto-js/enc-hex");
 const base64 = require("crypto-js/enc-base64");
 const AES = require("crypto-js/aes");
 const md5Encrypt = require("crypto-js/md5");
+const storage = require("node-persist");
+
+storage.init();
+
+const HOST = 'http://10.160.200.200';
 // ─────────────────────────────────────────────────────────────────────────────
 
 /********* Utility methods ****************/
-const PUBLIC_KEY = "MIIBI....B";
-const PRIVATE_KEY = "MIIBI....P";
+// const PUBLIC_KEY = "MIIBI....B";
+// const PRIVATE_KEY = "MIIBI....P";
 const CLIENT_TYPE = "WINPC_V2";
 const md5 = (val) => {
   return md5Encrypt(val).toString();
@@ -17,21 +22,21 @@ const md5 = (val) => {
 
 const authorize = async (data) => {
   return axios.post(
-    "http://10.160.200.200/brms/api/v1.0/accounts/authorize",
+    HOST + "/brms/api/v1.0/accounts/authorize",
     data
   );
 };
 
 const keepalive = async (data) => {
   return axios.put(
-    "http://10.160.200.200/brms/api/v1.0/accounts/keepalive",
+    HOST + "/brms/api/v1.0/accounts/keepalive",
     data
   );
 };
 
 const updateToken = async (data) => {
   return axios.post(
-    "http://10.160.200.200/brms/api/v1.0/accounts/updateToken",
+    HOST + "/brms/api/v1.0/accounts/updateToken",
     data
   );
 };
@@ -43,7 +48,7 @@ const updateToken = async (data) => {
  * @param {*} data
  */
 function setItem(key, data) {
-  localStorage.setItem(key, data);
+  storage.setItem(key, data);
 }
 
 /********* Utility methods END ************/
@@ -58,15 +63,29 @@ function setItem(key, data) {
  * @return {*}
  * @memberof Session
  */
-async function firstLogin(username) {
+async function firstLogin() {
   try {
-    await authorize({
-      userName: username,
-      ipAddress: "10.160.200.200",
+    await axios.post(HOST + "/brms/api/v1.0/accounts/authorize", {
+      userName: "system",
+      ipAddress: "192.168.81.233",
       clientType: CLIENT_TYPE,
     });
-  } catch ({ realm, encryptType, publickey, randomKey }) {
-    return { realm, encryptType, publickey, randomKey };
+  } catch (error) {
+    return error?.response?.data;
+  }
+}
+
+async function secondLogin(data) {
+  try {
+    const response = await axios.post(
+      HOST + "/brms/api/v1.0/accounts/authorize",
+      data
+    );
+    return response?.data;
+  } catch (error) {
+    console.log(error);
+
+    return error;
   }
 }
 
@@ -93,6 +112,8 @@ async function login() {
     );
     const signature = md5($$signature + ":" + randomKey);
 
+    // console.log(realm, encryptType, publickey, randomKey)
+
     setItem("firstRejectPublicKey", publickey);
     setItem("$$signature", $$signature);
 
@@ -108,21 +129,23 @@ async function login() {
       userType: 0,
     });
 
-    const { code, desc, data, token, secretKey, secretVector } =
-      dataSecondLogin;
+    const { code, desc, data, token, secretKey, secretVector } = dataSecondLogin;
 
+    console.log(code, desc, data, token, secretKey, secretVector)
     if (code && code !== 1000) {
       // If code is not equal to 1000
       return await Promise.reject({ code, data, desc });
     } else if (token) {
-      setItem("token", token); // token
-      setItem("secretKey", secretKey); // secretKey
-      setItem("secretVector", secretVector); // secretVector
+      storage.setItem("token", token); // token
+      storage.setItem("secretKey", secretKey); // secretKey
+      storage.setItem("secretVector", secretVector); // secretVector
     }
   } catch ({ code, data, desc }) {
     // Other kinds of exception handling
+    // console.log("ERROR", error.message);
     return await Promise.reject({ code, data, desc });
   }
+
 }
 
 /**
@@ -143,7 +166,7 @@ async function doUpdateToken() {
   const token = getItem("token");
   const signature = md5($$signature + ":" + token);
   const { token: updatedToken } = await updateToken({ signature });
-  setItem("token", updatedToken);
+  storage.setItem("token", updatedToken);
 }
 
 /********* Call login function ************/
@@ -163,16 +186,16 @@ setInterval(async () => {
 }, RESET_TOKEN_TIME);
 /********* Keepalive and update END **********/
 
-// ─────────────────────────────────────────────────────────────────────────────
+// // ─────────────────────────────────────────────────────────────────────────────
 
-/***************** Utility methods ****************/
+// /***************** Utility methods ****************/
 
 const getMqConfigIP = async (transport) => {
-  console.log('http://10.160.200.200/brms/api/v1.1/config/mq/' + transport);
+  // console.log('HOST + /brms/api/v1.1/config/mq/' + transport);
   const response = await axios.get(
-    `http://10.160.200.200/brms/api/v1.1/config/mq/${transport}`
+    HOST + `/brms/api/v1.1/config/mq/${transport}`
   );
-  console.log(response.data)
+  // console.log(response.data)
   return response.data;
 };
 
@@ -182,9 +205,9 @@ const getMqConfigIP = async (transport) => {
 * @param {*} key 
 */
 function getItem(key) {
-  return localStorage.getItem(key);
+  return storage.getItem(key);
 }
-// const value =  localStorage.getItem("key");
+// const value =  storage.getItem("key");
 // console.log(value);
 /**
  * aesDecrypt
@@ -204,9 +227,9 @@ function aesDecrypt(word, secretKey, secretVector) {
   return decryptedWord.toString();
 }
 
-/********************************************************
- * !! MAIN PART BEGIN !! *
- ********************************************************/
+// /********************************************************
+//  * !! MAIN PART BEGIN !! *
+//  ********************************************************/
 
 const protocol = "wss"; // Assume that the protocol is wss
 const config = {}; // global mq config info
@@ -225,8 +248,8 @@ async function getMqConf() {
     } = await getMqConfigIP(protocol);
 
     console.log("ADDR  => ", addr)
-    // const secretKey = "yourSecretKey";
-    // const secretVector = "yourSecretVector";
+    const secretKey = getItem('secretKey');
+    const secretVector = getItem('secretVector');
 
     const decryptedPassword = aesDecrypt(encryptedPassword, secretKey, secretVector);
 
@@ -248,29 +271,30 @@ async function getMqConf() {
 async function connectMq() {
   try {
     await getMqConf();
+    console.log("get MQ");
     const { protocol, addr, username, password } = config;
-    const [host, port] = addr.split(":");
-    const uri = `${protocol}://${host}:${port}`;
-    const clientId = "xxxxxx-xxxxxxy-0xxxxxx";
+    console.log("protocal",protocol, addr, username, password);
+    // const [host, port] = addr.split(":");
+    // const uri = `${protocol}://${host}:${port}`;
+    // const clientId = "xxxxxx-xxxxxxy-0xxxxxx";
 
-    mq = mqtt.connect(uri, { username, password, clientId });
+    // mq = mqtt.connect(uri, { username, password, clientId });
 
-    const topicName = "mq.alarm.msg.topic.1";
+    // const topicName = "mq.alarm.msg.topic.1";
 
-    mq.on("connect", () => {
-      mq.subscribe(topicName, function (err) {
-        if (!err) console.log("Subscribed successfully!");
-      });
-    });
+    // mq.on("connect", () => {
+    //   mq.subscribe(topicName, function (err) {
+    //     if (!err) console.log("Subscribed successfully!");
+    //   });
+    // });
 
-    mq.on("message", (topic, message) => {
-      console.log("log =>> ", topic, message.toString());
-    });
+    // mq.on("message", (topic, message) => {
+    //   console.log("log =>> ", topic, message.toString());
+    // });
   } catch (error) {
     console.error("Error connecting to MQTT broker:", error);
   }
 }
-
 
 // Connect to MQTT broker and subscribe
 connectMq()
@@ -281,14 +305,14 @@ connectMq()
     console.error("Error connecting to MQTT broker:", error);
   });
 
-/********************************************************
- * !! MAIN PART END !! *
- ********************************************************/
+// /********************************************************
+//  * !! MAIN PART END !! *
+//  ********************************************************/
 
-// const express = require("express");
-// const app = express();
+// // const express = require("express");
+// // const app = express();
 
-// const port = 4952;
-// app.listen(port, () => {
-//   console.log(`Server running on port ${port}`);
-// });
+// // const port = 4952;
+// // app.listen(port, () => {
+// //   console.log(`Server running on port ${port}`);
+// // });
