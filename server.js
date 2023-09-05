@@ -100,7 +100,7 @@ async function secondLogin(data) {
  */
 async function login() {
   const username = "system";
-  const password = "CCTV@Fwh65";
+  const password = "admin123";
 
   try {
     const firsetLoginResult = await firstLogin();
@@ -171,7 +171,7 @@ async function doUpdateToken() {
 
 /********* Call login function ************/
 const username = "system";
-const password = "CCTV@Fwh65";
+const password = "admin123";
 login(username, password);
 /********* Call login function ************/
 
@@ -190,13 +190,11 @@ setInterval(async () => {
 
 // /***************** Utility methods ****************/
 
-const getMqConfigIP = async (transport) => {
-  // console.log('HOST + /brms/api/v1.1/config/mq/' + transport);
-  const response = await axios.get(
+const getMqConfigIP = (transport) => {
+  return axios.get(
     HOST + `/brms/api/v1.1/config/mq/${transport}`
   );
-  // console.log(response.data)
-  return response.data;
+  // return response.data;
 };
 
 /**
@@ -231,15 +229,15 @@ function aesDecrypt(word, secretKey, secretVector) {
 //  * !! MAIN PART BEGIN !! *
 //  ********************************************************/
 
-const protocol = "wss"; // Assume that the protocol is wss
 const config = {}; // global mq config info
 let mq;
 
 /**
  * getMqConfig
  * Get Mq config
- */
+*/
 async function getMqConf() {
+  const protocol = "wss"; // Assume that the protocol is wss
   try {
     const {
       addr,
@@ -247,7 +245,7 @@ async function getMqConf() {
       password: encryptedPassword,
     } = await getMqConfigIP(protocol);
 
-    console.log("ADDR  => ", addr)
+    console.log("username  => ", username)
     const secretKey = getItem('secretKey');
     const secretVector = getItem('secretVector');
 
@@ -273,7 +271,7 @@ async function connectMq() {
     await getMqConf();
     console.log("get MQ");
     const { protocol, addr, username, password } = config;
-    console.log("protocal",protocol, addr, username, password);
+    console.log("protocal", protocol, addr, username, password);
     // const [host, port] = addr.split(":");
     // const uri = `${protocol}://${host}:${port}`;
     // const clientId = "xxxxxx-xxxxxxy-0xxxxxx";
