@@ -287,7 +287,7 @@ async function connectMq() {
     // });
 
     // mq.on("message", (topic, message) => {
-    //   console.log("log =>> ", topic, message.toString());
+      console.log("log =>> ", topic, message.toString());
     // });
   } catch (error) {
     console.error("Error connecting to MQTT broker:", error);
